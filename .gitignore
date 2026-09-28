@@ -1,0 +1,50 @@
+# Python & Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Secrets & Environment Variables
+.env
+.env.*
+!.env.example
+
+# Temporary Video & Audio Caches
+cache/
+*.wav
+*.mp3
+temp_audio*
+
+# Agent Artifacts & Ephemeral State
+.gemini/
+brain/
+scratch/
+
+# IDE & OS Files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+Thumbs.db
+Desktop.ini
+.DS_Store

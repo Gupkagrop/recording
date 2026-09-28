@@ -1,0 +1,856 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+docs/
+  architecture/
+    obsidian_vault.md
+    pipeline.md
+src/
+  extract.py
+tests/
+  test_smoke.py
+.env.example
+.gitignore
+Запустить_Транскрибатор.bat
+AGENTS.md
+app_gui.py
+GEMINI.md
+PROCESSED_VIDEOS.md
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="docs/architecture/obsidian_vault.md">
+> [!NOTE]
+> Спецификация структуры базы знаний Obsidian Vault, стандартов наименования, формата атомарных заметок и визуализации Canvas.
+
+# Архитектура базы знаний Obsidian Vault
+
+## 1. Структура директорий Vault
+
+Базовый путь к хранилищу: `C:\Users\denis\Documents\Obsidian Vault`
+
+```text
+Obsidian Vault/
+├── <Дисциплина>/
+│   ├── Термины/
+│   │   ├── <Понятие_1>.md
+│   │   └── <Понятие_2>.md
+│   ├── Лекция 1.md
+│   ├── Практика 1.md
+│   ├── Учебник - <Дисциплина>.md
+│   └── <Дисциплина>.canvas
+├── Расписание.md
+└── Telegram/
+    └── Входящие.md
+```
+
+## 2. Стандарты именования заметок (Unique Note Naming)
+
+- Имена заметок должны быть уникальными и самодостаточными.
+- Запрещены коллизии имён между разными предметами (при необходимости добавлять контекстный префикс/постфикс).
+- Имена лекций содержат тип занятия и номер: `Лекция 1. Название темы.md` или `Практика 2.md`.
+
+## 3. Спецификация атомарных терминов (Zettelkasten)
+
+Каждая концептуальная карточка в папке `Термины/` оформляется по строгой структуре:
+
+```yaml
+---
+type: concept
+tags:
+  - термин
+  - <subject_tag>
+aliases:
+  - <lowercase_alias>
+subject: <Subject>
+---
+**<Название термина>** — <точное определение>
+
+---
+**Связи:** [[<Название лекции>]]
+```
+
+## 4. Спецификация генерального учебника (`Учебник - <Subject>.md`)
+
+- Единый консолидированный справочник по предмету.
+- Структурирован по темам и главам (не по хронологии пар).
+- Содержит трансклюзии всех связанных терминов (`![[Термин]]`) и сквозные примеры.
+
+## 5. Спецификация холста графа знаний (`.canvas`)
+
+Файлы `.canvas` хранят JSON со схемой узлов (`nodes`) и связей (`edges`):
+- **Узлы лекций / практик:** `type: "file"`, цвет `5` (синий).
+- **Узлы терминов:** `type: "file"`, цвет `4` (зелёный).
+- **Группа понятий:** `type: "group"`, обрамляет все термины дисциплины для поддержания визуальной чистоты.
+- **Рёбра (Edges):** направлены от узла занятия к соответствующим терминам.
+</file>
+
+<file path="docs/architecture/pipeline.md">
+> [!NOTE]
+> Архитектурная спецификация сквозного конвейера автономной обработки видеозаписей лекций и синхронизации с базой знаний Obsidian.
+
+# Конвейер автономной обработки лекций (Pipeline Architecture)
+
+## 1. Общий поток данных (End-to-End Workflow)
+
+```mermaid
+flowchart TD
+    Video["Видеозапись лекции (.mp4)"] --> Extract["src/extract.py (ffmpeg: WAV + кадры)"]
+    Extract --> Whisper["faster-whisper (CUDA float16)"]
+    Whisper --> Transcript["cache/<video>/transcript.txt"]
+    Transcript --> Agent["ИИ-архитектор (Анализ 100% текста)"]
+    Agent --> Zettel["Zettelkasten: Термины/ (Атомарные заметки)"]
+    Agent --> Lecture["Основная лекция (LaTeX + Callouts + Embeds)"]
+    Agent --> Textbook["Общий учебник по дисциплине"]
+    Agent --> Canvas["Глобальный граф (.canvas)"]
+    Agent --> Cleanup["Удаление кэша & запись в PROCESSED_VIDEOS.md"]
+```
+
+## 2. Этапы конвейера
+
+### Шаг 0. Верификация контекста и дисциплины
+- Агент обязан предварительно просканировать существующую структуру Obsidian Vault для исключения дубликатов и коллизий имён.
+- **Математические дисциплины:** При наличии математического аппарата (формулы, доказательства) агент обязан уточнить точное наименование курса (Алгебра, Матанализ, Дискретная математика).
+
+### Шаг 1. Локальное извлечение аудио и кадров
+- Выполняется команда:
+  ```powershell
+  uv run python src/extract.py "<video_path>"
+  ```
+- Аудио извлекается через `ffmpeg` в 16-битный PCM WAV (моно, 16 кГц).
+- Транскрибация выполняется через `faster-whisper` на графическом процессоре (`device="cuda"`, `compute_type="float16"`).
+
+### Шаг 2. Анализ транскрипта и переименование видео
+- Прочитывается 100% файла транскрипта. Частичное чтение запрещено.
+- **Переименование видеофайла:** Если исходный файл имеет неинформативное имя (например, `2026-09-14 10-37-07.mp4`), после установления темы и предмета файл переименовывается в осмысленное имя (например, `Основы проектной деятельности. Лекция 1.mp4`).
+
+### Шаг 3. Извлечение концептов (Zettelkasten)
+- Выделение только явно сформулированных определений.
+- Создание файлов в `<Subject>/Термины/<Термин>.md` с YAML-фронтматтером.
+- При повторном упоминании термин дополняется, а не перезаписывается.
+
+### Шаг 4. Формирование основной заметки лекции
+- Никаких скриншотов с текстом: все формулы и выкладки переводятся в чистый LaTeX (`$$...$$`).
+- Использование семантических коллаутов Obsidian (`[!note]`, `[!info]`, `[!warning]`, `[!example]-`).
+- Встраивание определений через блок-трансклюзии: `![[Термин]]`.
+
+### Шаг 5. Агрегация в генеральный учебник
+- Интеграция нового материала в монолитный файл `Учебник - <Subject>.md` с делением по логическим главам, а не хронологическим парам.
+
+### Шаг 6. Обновление интерактивного холста (Canvas)
+- Обновление графа `<Subject>.canvas`.
+- Узлы лекций — цвет `5` (синий), узлы терминов — цвет `4` (зелёный).
+- Группировка терминов в визуальный узел `group` («Термины / Concepts»).
+
+### Шаг 7. Очистка кэша и реестр
+- Удаление директории `cache/<video_name>/`.
+- Добавление записи в [PROCESSED_VIDEOS.md](file:///C:/Users/denis/Documents/antigravity/recording/PROCESSED_VIDEOS.md).
+</file>
+
+<file path="src/extract.py">
+"""Модуль извлечения аудиодорожки, транскрибации речи и нарезки опорных слайдов из видеофайлов."""
+
+import os
+import shutil
+import site
+import sys
+import time
+from pathlib import Path
+from typing import List
+
+# Добавление путей к бинарным библиотекам NVIDIA CUDA в Windows PATH
+venv_site = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    ".venv",
+    "Lib",
+    "site-packages",
+)
+for lib in ["cublas", "cudnn", "cuda_nvrtc"]:
+    p = os.path.join(venv_site, "nvidia", lib, "bin")
+    if os.path.exists(p):
+        os.environ["PATH"] = p + os.pathsep + os.environ["PATH"]
+        try:
+            os.add_dll_directory(p)
+        except Exception:
+            pass
+
+import ffmpeg
+from faster_whisper import WhisperModel
+
+
+def extract_audio(video_path: str, temp_audio_path: str) -> None:
+    """Извлечение 16-битной PCM аудиодорожки с частотой 16 кГц через ffmpeg."""
+    if os.path.exists(temp_audio_path):
+        return
+
+    print("Извлечение аудиодорожки...")
+    try:
+        (
+            ffmpeg.input(video_path)
+            .output(temp_audio_path, acodec="pcm_s16le", ac=1, ar="16k")
+            .overwrite_output()
+            .run(quiet=True)
+        )
+    except ffmpeg.Error as error:
+        err_msg = error.stderr.decode() if error.stderr else str(error)
+        print(f"Ошибка ffmpeg (аудио): {err_msg}")
+        sys.exit(1)
+
+
+def transcribe_audio(audio_path: str, transcript_file_path: str) -> None:
+    """Транскрибация аудио через модель faster-whisper с сохранением временных меток."""
+    if os.path.exists(transcript_file_path):
+        return
+
+    print("Транскрибация аудио (faster-whisper GPU CUDA)...")
+    try:
+        model = WhisperModel("small", device="cuda", compute_type="float16")
+    except RuntimeError:
+        print("CUDA недоступна. Выполняется переключение на CPU (int8)...")
+        model = WhisperModel("small", device="cpu", compute_type="int8")
+
+    segments, _ = model.transcribe(
+        audio_path,
+        beam_size=5,
+        vad_filter=True,
+        vad_parameters=dict(min_silence_duration_ms=500),
+    )
+
+    with open(transcript_file_path, "w", encoding="utf-8") as file:
+        for segment in segments:
+            start_min = int(segment.start // 60)
+            start_sec = int(segment.start % 60)
+            file.write(f"[{start_min:02d}:{start_sec:02d}] {segment.text}\n")
+
+
+def extract_frames(video_path: str, frames_directory: str, video_basename: str) -> None:
+    """Извлечение опорных видеокадров (1 кадр в минуту) через ffmpeg."""
+    if len(os.listdir(frames_directory)) > 0:
+        return
+
+    print("Извлечение опорных кадров лекции...")
+    try:
+        (
+            ffmpeg.input(video_path)
+            .filter("fps", fps=1 / 60)
+            .output(os.path.join(frames_directory, f"{video_basename}-frame-%04d.jpg"))
+            .run(quiet=True)
+        )
+    except ffmpeg.Error as error:
+        err_msg = error.stderr.decode() if error.stderr else str(error)
+        print(f"Ошибка ffmpeg (кадры): {err_msg}")
+        sys.exit(1)
+
+
+def extract_content(video_path: str) -> None:
+    """Координатор сквозного процесса подготовки данных из видеозаписи."""
+    if not os.path.exists(video_path):
+        print(f"Ошибка: Видеофайл не найден: {video_path}")
+        sys.exit(1)
+
+    video_basename = os.path.splitext(os.path.basename(video_path))[0]
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    cache_dir = os.path.join(project_root, "cache", video_basename)
+
+    os.makedirs(cache_dir, exist_ok=True)
+    temp_audio = os.path.join(cache_dir, "audio.wav")
+    transcript_file = os.path.join(cache_dir, "transcript.txt")
+    frames_dir = os.path.join(cache_dir, "frames")
+    os.makedirs(frames_dir, exist_ok=True)
+
+    # 1. Извлечение аудио
+    extract_audio(video_path, temp_audio)
+
+    # 2. Распознавание речи
+    transcribe_audio(temp_audio, transcript_file)
+
+    # 3. Нарезка ключевых слайдов
+    extract_frames(video_path, frames_dir, video_basename)
+
+    print(f"\nГотово! Результаты сохранены в:\n{cache_dir}")
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("Использование: uv run python src/extract.py <путь_к_видео>")
+        sys.exit(1)
+    extract_content(sys.argv[1])
+</file>
+
+<file path="tests/test_smoke.py">
+"""Модуль базовых дымовых тестов (smoke tests) для верификации целостности репозитория."""
+
+import importlib.util
+import os
+import unittest
+from pathlib import Path
+
+
+class TestProjectIntegrity(unittest.TestCase):
+    """Набор тестов для проверки структуры проекта и валидности модулей."""
+
+    def setUp(self) -> None:
+        """Инициализация путей к ключевым артефактам проекта."""
+        self.root_dir = Path(__file__).resolve().parent.parent
+
+    def test_required_files_exist(self) -> None:
+        """Проверка наличия всех обязательных файлов стандарта 2026 года."""
+        required_files = [
+            "AGENTS.md",
+            "GEMINI.md",
+            "PROCESSED_VIDEOS.md",
+            ".gitignore",
+            ".env.example",
+            "app_gui.py",
+            "src/extract.py",
+            "docs/architecture/pipeline.md",
+            "docs/architecture/obsidian_vault.md",
+        ]
+        for rel_path in required_files:
+            file_path = self.root_dir / rel_path
+            self.assertTrue(
+                file_path.exists(),
+                f"Обязательный файл {rel_path} отсутствует в репозитории.",
+            )
+
+    def test_agents_contract_structure(self) -> None:
+        """Проверка структуры и ключевых разделов файла AGENTS.md."""
+        agents_file = self.root_dir / "AGENTS.md"
+        content = agents_file.read_text(encoding="utf-8")
+
+        expected_sections = [
+            "Tech Stack",
+            "Commands",
+            "Code Standards",
+            "Architecture & Pipeline Rules",
+            "Prohibited Patterns",
+        ]
+        for section in expected_sections:
+            self.assertIn(
+                section,
+                content,
+                f"Раздел '{section}' отсутствует в файле AGENTS.md.",
+            )
+
+    def test_extract_module_syntax(self) -> None:
+        """Проверка корректности синтаксиса и структуры модуля extract.py."""
+        extract_path = self.root_dir / "src" / "extract.py"
+        spec = importlib.util.spec_from_file_location("extract", extract_path)
+        self.assertIsNotNone(spec, "Не удалось создать спецификацию для модуля extract.py")
+
+
+if __name__ == "__main__":
+    unittest.main()
+</file>
+
+<file path=".env.example">
+# Путь к локальному хранилищу Obsidian Vault
+OBSIDIAN_VAULT_PATH=C:\Users\denis\Documents\Obsidian Vault
+
+# Рабочая директория скриптов записи и транскрибации
+RECORDING_WORKSPACE=C:\Users\denis\Documents\antigravity\recording
+
+# Модель Faster-Whisper по умолчанию (tiny, base, small, medium, large-v3)
+WHISPER_MODEL=small
+
+# Устройство для вычислений (cuda / cpu)
+WHISPER_DEVICE=cuda
+
+# Тип вычислений для CUDA (float16, int8_float16, float32)
+WHISPER_COMPUTE_TYPE=float16
+</file>
+
+<file path=".gitignore">
+# Python & Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Secrets & Environment Variables
+.env
+.env.*
+!.env.example
+
+# Temporary Video & Audio Caches
+cache/
+*.wav
+*.mp3
+temp_audio*
+
+# Agent Artifacts & Ephemeral State
+.gemini/
+brain/
+scratch/
+
+# IDE & OS Files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+Thumbs.db
+Desktop.ini
+.DS_Store
+</file>
+
+<file path="Запустить_Транскрибатор.bat">
+@echo off
+title Умная Транскрибация Видео
+uv run python app_gui.py
+</file>
+
+<file path="AGENTS.md">
+> [!NOTE]
+> Этот файл представляет собой единый поведенческий контракт и технический паспорт проекта для всех ИИ-агентов (стандарт 2026 года). Определяет стек, стандарты кода, команды верификации и правила работы с базой Obsidian.
+
+# AGENTS.md — Контракт разработки проекта Recording & Obsidian Automation
+
+## 1. Tech Stack
+- **Язык:** Python 3.12+
+- **Пакетный менеджер:** `uv`
+- **Графический интерфейс:** `customtkinter` (Dark/System theme)
+- **ИИ-распознавание аудио:** `faster-whisper` (движок CTranslate2, ускорение NVIDIA CUDA 12, cuDNN 9)
+- **Обработка медиа:** `ffmpeg-python`, системный бинарник `ffmpeg`
+- **Целевая среда базы знаний:** Obsidian Vault (Markdown, KaTeX LaTeX, Canvas JSON, Zettelkasten)
+
+## 2. Commands
+- **Установка зависимостей:** `uv pip install -r requirements.txt` или `uv sync`
+- **Запуск графического транскрибатора:** `uv run python app_gui.py` (или `Запустить_Транскрибатор.bat`)
+- **Консольная экстракция видео:** `uv run python src/extract.py "<video_path>"`
+- **Синтаксическая компиляция:** `uv run python -m py_compile app_gui.py src/extract.py`
+- **Запуск тестов:** `uv run pytest` (или `uv run python -m unittest discover tests`)
+- **Генерация AST-карты кодовой базы:** `npx repomix`
+
+## 3. Code Standards & Quality Gates
+- **Язык общения и документации:**
+  - Все ответы в чате, пояснения, docstrings и комментарии внутри кода — **строго на русском языке**.
+  - Все Git commit messages и PR — **строго на русском языке** по стандарту Conventional Commits (`feat: ...`, `fix: ...`, `chore: ...`).
+  - Все имена переменных, функций, классов и модулей — строго на английском языке.
+- **Архитектура чистого кода:**
+  - **Ранние возвраты (Early Returns):** избегать вложенности условий более 3 уровней.
+  - **Компактные функции:** размер функции не должен превышать 30–40 строк. Разбивать сложную логику на вспомогательные чистые функции.
+  - **Строгая типизация:** полный запрет на неявные типы и `any`. Обязательные type hints для параметров и возвращаемых значений.
+  - **Без заглушек:** запрещены комментарии-заглушки вида `// TODO` или нереализованные моки. Код обязан быть рабочим и законченным.
+
+## 4. Architecture & Pipeline Rules
+Конвейер обработки лекций подробно задокументирован в модульных спецификациях:
+- **[Конвейер обработки лекций](file:///C:/Users/denis/Documents/antigravity/recording/docs/architecture/pipeline.md)**
+- **[Спецификация Obsidian Vault](file:///C:/Users/denis/Documents/antigravity/recording/docs/architecture/obsidian_vault.md)**
+
+### Ключевые инварианты конвейера:
+1. **Строгая точность (Strict Fidelity):** фиксация только реальных тезисов преподавателя. Запрет на додумывание определений.
+2. **Фильтрация "воды" (Remove Fluff):** удаление посторонних тем, оффтопа и повторов при сохранении максимальной плотности полезной теории.
+3. **Исключение для математики:** для дисциплин с формулами (Алгебра, Матанализ, Дискретная математика) агент обязан добавлять понятные пояснения и примеры.
+4. **Запрет скриншотов:** формулы и доказательства оформляются исключительно в академическом KaTeX LaTeX (`$$...$$`).
+5. **Сквозная актуализация:** каждая обработанная лекция дополняет Zettelkasten-термины (`Термины/`), генерирует лекционную заметку, пополняет монолитный `Учебник - <Subject>.md`, обновляет граф `<Subject>.canvas` и фиксируется в `PROCESSED_VIDEOS.md`.
+6. **Автоматическое переименование:** видеозаписи с неинформативными именами дат (например, `2026-09-14 10-37-07.mp4`) после анализа переименовываются в читаемый вид (например, `Основы проектной деятельности. Лекция 1.mp4`).
+
+## 5. Prohibited Patterns & Safety
+- **Запрет деструктивных действий:** запрещено без прямого подтверждения пользователя удалять каталоги вне временных кэшей (`cache/`), сбрасывать Git (`git reset --hard`) или перезаписывать готовые заметки.
+- **Защита секретов:** запрещено хардкодить пути к чувствительным ресурсам или токены. Все настройки хранятся в `.env`.
+- **Защита системных путей:** запрещено модифицировать файлы операционной системы Windows.
+</file>
+
+<file path="app_gui.py">
+import os
+import sys
+import threading
+import customtkinter as ctk
+from tkinter import filedialog
+from pathlib import Path
+
+# Setup NVIDIA DLL paths if available
+venv_site = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".venv", "Lib", "site-packages")
+for lib in ['cublas', 'cudnn', 'cuda_nvrtc']:
+    p = os.path.join(venv_site, 'nvidia', lib, 'bin')
+    if os.path.exists(p):
+        os.environ["PATH"] = p + os.pathsep + os.environ["PATH"]
+        try:
+            os.add_dll_directory(p)
+        except Exception:
+            pass
+
+import ffmpeg
+from faster_whisper import WhisperModel
+
+ctk.set_appearance_mode("System")
+ctk.set_default_color_theme("blue")
+
+class TranscriberApp(ctk.CTk):
+    def __init__(self):
+        super().__init__()
+
+        self.title("🎙️ Умная Транскрибация Видео")
+        self.geometry("800x700")
+        
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(5, weight=1)
+
+        # 1. Video Paths Header (Label + Button)
+        self.frame_paths_header = ctk.CTkFrame(self, fg_color="transparent")
+        self.frame_paths_header.grid(row=0, column=0, padx=20, pady=(20, 5), sticky="ew")
+        self.frame_paths_header.grid_columnconfigure(0, weight=1)
+
+        self.label_paths = ctk.CTkLabel(self.frame_paths_header, text="Пути к видео:", font=("Segoe UI", 14, "bold"))
+        self.label_paths.grid(row=0, column=0, sticky="w")
+        
+        self.btn_browse_files = ctk.CTkButton(self.frame_paths_header, text="Выбрать видео...", width=120, command=self.browse_files)
+        self.btn_browse_files.grid(row=0, column=1, sticky="e")
+        
+        self.textbox_paths = ctk.CTkTextbox(self, height=100)
+        self.textbox_paths.grid(row=1, column=0, padx=20, pady=5, sticky="ew")
+
+        # 2. Save Directory
+        self.label_save = ctk.CTkLabel(self, text="Папка для сохранения (txt и кадры):", font=("Segoe UI", 14, "bold"))
+        self.label_save.grid(row=2, column=0, padx=20, pady=(15, 5), sticky="w")
+        
+        self.frame_save = ctk.CTkFrame(self, fg_color="transparent")
+        self.frame_save.grid(row=3, column=0, padx=20, pady=5, sticky="ew")
+        self.frame_save.grid_columnconfigure(0, weight=1)
+        
+        default_dir = os.path.join(os.path.expanduser("~"), "Documents", "Транскрибации")
+        self.entry_save = ctk.CTkEntry(self.frame_save)
+        self.entry_save.insert(0, default_dir)
+        self.entry_save.grid(row=0, column=0, sticky="ew", padx=(0, 10))
+        
+        self.btn_browse = ctk.CTkButton(self.frame_save, text="Обзор...", width=120, command=self.browse_folder)
+        self.btn_browse.grid(row=0, column=1)
+
+        # 3. Checkbox Downloads
+        self.checkbox_dl = ctk.CTkCheckBox(self, text="Дополнительно сохранить .txt в папку 'Загрузки'")
+        self.checkbox_dl.select()
+        self.checkbox_dl.grid(row=4, column=0, padx=20, pady=15, sticky="w")
+
+        # 4. Log Area
+        self.textbox_log = ctk.CTkTextbox(self, state="disabled", font=("Consolas", 12))
+        self.textbox_log.grid(row=5, column=0, padx=20, pady=10, sticky="nsew")
+
+        # 5. Start Button
+        self.btn_start = ctk.CTkButton(self, text="НАЧАТЬ ОБРАБОТКУ", font=("Segoe UI", 16, "bold"), height=40, command=self.start_processing)
+        self.btn_start.grid(row=6, column=0, padx=20, pady=20, sticky="ew")
+
+    def browse_files(self):
+        files = filedialog.askopenfilenames(
+            title="Выберите видео файлы",
+            filetypes=[("Видео", "*.mp4 *.mkv *.avi *.mov *.wmv *.flv *.webm"), ("Все файлы", "*.*")]
+        )
+        if files:
+            current_text = self.textbox_paths.get("1.0", "end-1c").strip()
+            # Преобразуем кортеж путей в строку, разделенную переносами
+            new_paths = "\n".join(files)
+            if current_text:
+                self.textbox_paths.insert("end", "\n" + new_paths)
+            else:
+                self.textbox_paths.insert("end", new_paths)
+
+    def browse_folder(self):
+        folder = filedialog.askdirectory(initialdir=self.entry_save.get())
+        if folder:
+            self.entry_save.delete(0, 'end')
+            self.entry_save.insert(0, folder)
+
+    def log_message(self, message):
+        self.textbox_log.configure(state="normal")
+        self.textbox_log.insert("end", message + "\n")
+        self.textbox_log.see("end")
+        self.textbox_log.configure(state="disabled")
+        self.update_idletasks()
+
+    def start_processing(self):
+        paths_text = self.textbox_paths.get("1.0", "end-1c")
+        save_dir = self.entry_save.get().strip()
+        save_dl = self.checkbox_dl.get() == 1
+        
+        if not paths_text.strip():
+            self.log_message("❌ Ошибка: Введите или выберите хотя бы один путь к видео!")
+            return
+        if not save_dir:
+            self.log_message("❌ Ошибка: Укажите папку для сохранения!")
+            return
+
+        self.btn_start.configure(state="disabled", text="ИДЕТ ОБРАБОТКА...")
+        self.btn_browse_files.configure(state="disabled")
+        self.textbox_log.configure(state="normal")
+        self.textbox_log.delete("1.0", "end")
+        self.textbox_log.configure(state="disabled")
+        
+        # Start background thread
+        thread = threading.Thread(target=self.process_videos, args=(paths_text.split('\n'), save_dir, save_dl))
+        thread.daemon = True
+        thread.start()
+
+    def process_videos(self, video_paths, save_dir, save_to_downloads):
+        try:
+            downloads_dir = os.path.join(os.path.expanduser("~"), "Downloads")
+            
+            self.log_message("Загрузка модели Whisper (small)...")
+            model = WhisperModel("small", device="cuda", compute_type="float16")
+            
+            for v_path in video_paths:
+                v_path = v_path.strip().strip('"').strip("'")
+                if not v_path:
+                    continue
+                if not os.path.exists(v_path):
+                    self.log_message(f"Пропуск: файл не найден -> {v_path}")
+                    continue
+                    
+                basename = os.path.splitext(os.path.basename(v_path))[0]
+                self.log_message(f"\n--- Обработка: {basename} ---")
+                
+                temp_audio = f"temp_audio_{basename}.wav".replace(" ", "_")
+                
+                try:
+                    # 1. Извлечение аудио
+                    self.log_message("Извлечение аудио дорожки...")
+                    if os.path.exists(temp_audio):
+                        os.remove(temp_audio)
+                        
+                    (
+                        ffmpeg
+                        .input(v_path)
+                        .output(temp_audio, acodec='pcm_s16le', ac=1, ar='16k')
+                        .overwrite_output()
+                        .run(quiet=True)
+                    )
+                    
+                    # 2. Транскрибация
+                    self.log_message("Транскрибация аудио в текст (может занять время)...")
+                    segments, info = model.transcribe(temp_audio, beam_size=5, vad_filter=True, vad_parameters=dict(min_silence_duration_ms=500))
+                    
+                    result_text = []
+                    for segment in segments:
+                        start_min = int(segment.start // 60)
+                        start_sec = int(segment.start % 60)
+                        line = f"[{start_min:02d}:{start_sec:02d}] {segment.text}"
+                        result_text.append(line)
+                        self.log_message(line)  # Show progress line by line!
+                    
+                    full_text = "\n".join(result_text)
+                    
+                    # 3. Сохранение текста
+                    os.makedirs(save_dir, exist_ok=True)
+                    save_path = os.path.join(save_dir, f"{basename}.txt")
+                    with open(save_path, "w", encoding="utf-8") as f:
+                        f.write(full_text)
+                    self.log_message(f"✅ Текст сохранен в: {save_path}")
+                    
+                    if save_to_downloads:
+                        dl_path = os.path.join(downloads_dir, f"{basename}.txt")
+                        with open(dl_path, "w", encoding="utf-8") as f:
+                            f.write(full_text)
+                        self.log_message(f"✅ Также сохранено в Загрузки: {dl_path}")
+                    
+                    # 4. Видео составляющая (кадры)
+                    self.log_message("Извлечение ключевых кадров (1 раз в минуту)...")
+                    frames_dir = os.path.join(save_dir, f"{basename}_кадры")
+                    os.makedirs(frames_dir, exist_ok=True)
+                    (
+                        ffmpeg
+                        .input(v_path)
+                        .filter('fps', fps=1/60)
+                        .output(os.path.join(frames_dir, f"{basename}-frame-%04d.jpg"))
+                        .run(quiet=True)
+                    )
+                    self.log_message(f"✅ Кадры сохранены в: {frames_dir}")
+                    
+                except Exception as e:
+                    self.log_message(f"❌ Ошибка при обработке {basename}: {str(e)}")
+                finally:
+                    if os.path.exists(temp_audio):
+                        os.remove(temp_audio)
+                        
+            self.log_message("\n🎉 Вся обработка успешно завершена!")
+        except Exception as e:
+            self.log_message(f"Критическая ошибка: {str(e)}")
+        finally:
+            self.btn_start.configure(state="normal", text="НАЧАТЬ ОБРАБОТКУ")
+            self.btn_browse_files.configure(state="normal")
+
+if __name__ == "__main__":
+    app = TranscriberApp()
+    app.mainloop()
+</file>
+
+<file path="GEMINI.md">
+> [!IMPORTANT]
+> **ВНИМАНИЕ! ЕДИНЫЙ ИСТОЧНИК ПРАВДЫ — AGENTS.md:**
+> Начиная с сентября 2026 года данный проект переведён на открытый стандарт 4-уровневой архитектуры контекста.
+> **Всем ИИ-агентам:** для работы с проектом, ознакомления со стеком, стандартами кода и конвейером обработки лекций **ОБЯЗАТЕЛЬНО СМОТРЕТЬ ТОЛЬКО НА [AGENTS.md](file:///C:/Users/denis/Documents/antigravity/recording/AGENTS.md)**!
+
+> [!NOTE]
+> Этот файл сохранён для обратной совместимости. Все актуальные правила, архитектурные регламенты и команды сборки перенесены в `AGENTS.md` и директорию `docs/architecture/`.
+
+# Навигация по документации:
+- **Основной поведенческий контракт:** [AGENTS.md](file:///C:/Users/denis/Documents/antigravity/recording/AGENTS.md)
+- **Конвейер обработки лекций:** [docs/architecture/pipeline.md](file:///C:/Users/denis/Documents/antigravity/recording/docs/architecture/pipeline.md)
+- **Архитектура Obsidian Vault:** [docs/architecture/obsidian_vault.md](file:///C:/Users/denis/Documents/antigravity/recording/docs/architecture/obsidian_vault.md)
+- **Реестр обработанных видео:** [PROCESSED_VIDEOS.md](file:///C:/Users/denis/Documents/antigravity/recording/PROCESSED_VIDEOS.md)
+</file>
+
+<file path="PROCESSED_VIDEOS.md">
+# Реестр обработанных видео
+
+Этот файл автоматически обновляется агентом после успешной обработки каждой видеолекции (Шаг 7 в GEMINI.md).
+
+## Сводка по дисциплинам
+
+| Дисциплина | Количество обработанных видео |
+| :--- | :---: |
+| Алгебра, геометрия и теория дифференциальных уравнений | 3 |
+| Анализ данных и ИИ | 2 |
+| Дискретная математика | 3 |
+| Иностранный язык | 2 |
+| Информационные технологии и сервисы | 1 |
+| Математика | 4 |
+| Основы проектной деятельности | 2 |
+| Основы российской государственности | 2 |
+| Программирование (Python) | 2 |
+
+---
+
+## История обработки
+
+### Алгебра, геометрия и теория дифференциальных уравнений
+- **Видео:** Алгебра, геометрия и теория дифференциальных уравнений. Первая лекция.mp4
+  - **Заметка:** Первая лекция.md
+  - **Дата обработки:** Сентябрь 2026
+- **Видео:** Алгебра, геометрия и теория дифференциальных уравнений. 2 лекция. Практика.mp4
+  - **Заметка:** Вторая лекция. Практика.md
+  - **Дата обработки:** 18.09.2026
+- **Видео:** `Алгебра, геометрия и теория дифференциальных уравнений. Практика 2.mp4` (ориг. `Математика Лекция 2.mp4`)
+  - **Заметка:** Практика 2.md
+  - **Дата обработки:** 28.09.2026
+
+### Анализ данных и ИИ
+- **Видео:** `Анализ данных и ИИ. Вторая лекция (NumPy и матрицы).mp4` (ориг. `Алгоритмы ИИ.mp4`)
+  - **Заметка:** Вторая лекция (NumPy и матрицы).md
+  - **Дата обработки:** 28.09.2026
+- **Видео:** Анализ данных и искусственный интеллект. Первая лекционная пара.mp4
+  - **Заметка:** Первая лекционная пара.md
+  - **Дата обработки:** Сентябрь 2026
+
+### Иностранный язык
+- **Видео:** Английский язык. Пара 1. Практика.mp4
+  - **Заметка:** Лекция 1. Практика.md
+  - **Дата обработки:** 16.09.2026
+- **Видео:** Английский.mp4
+  - **Заметка:** Лекция 2. Практика.md
+  - **Дата обработки:** 23.09.2026
+
+### Основы российской государственности
+- **Видео:** 2026-09-14 10-37-07.mp4
+  - **Заметка:** Практическое занятие 1.md
+  - **Дата обработки:** 15.09.2026
+- **Видео:** Орг практика 2.mp4
+  - **Заметка:** Практика 2.md
+  - **Дата обработки:** 21.09.2026
+
+### Дискретная математика
+- **Видео:** Дискретная математика. Первая практическая пара.mp4
+  - **Заметка:** Лекция 1. Практическая пара.md
+  - **Дата обработки:** 16.09.2026
+- **Видео:** Дискретная математика. Первая лексическая пара.mp4
+  - **Заметка:** Лекция 1. Лекционная пара.md
+  - **Дата обработки:** 16.09.2026
+- **Видео:** Дискретная математика.mp4
+  - **Заметка:** Лекция 2. Практическая пара.md
+  - **Дата обработки:** 23.09.2026
+
+### Программирование (Python)
+- **Видео:** Программирование Python.mp4
+  - **Заметка:** Лекция 1. Вводная.md
+  - **Дата обработки:** 17.09.2026
+- **Видео:** Python программирование часть 1.mp4 и Python программирование часть 2.mp4
+  - **Заметка:** Лекция 2. Базовый синтаксис.md
+  - **Дата обработки:** 24.09.2026
+
+### Математика
+- **Видео:** Математика. Практика 1.mp4
+  - **Заметка:** Практика 1.md
+  - **Дата обработки:** 18.09.2026
+- **Видео:** Математика Практика 2.mp4
+  - **Заметка:** Практика 2.md
+  - **Дата обработки:** 18.09.2026
+- **Видео:** Математика Лекция.mp4
+  - **Заметка:** Лекция 1.md
+  - **Дата обработки:** 21.09.2026
+- **Видео:** Математика практика 3 и 4.mp4
+  - **Заметка:** Практика 3 и 4.md
+  - **Дата обработки:** 25.09.2026
+
+### Информационные технологии и сервисы
+- **Видео:** ИТиС практика 2.mp4
+  - **Заметка:** Практика 2. GitVerse и CI-CD.md
+  - **Дата обработки:** 23.09.2026
+
+### Основы проектной деятельности
+- **Видео:** Основы проектной деятельности. Первая пара.mp4
+  - **Заметка:** Практика 1 - Основы проектной деятельности.md
+  - **Дата обработки:** 17.09.2026
+- **Видео:** Основы проектной деятельности. Вторая пара.mp4
+  - **Заметка:** Лекция 1 - Основы проектной деятельности.md
+  - **Дата обработки:** 26.09.2026
+</file>
+
+</files>
