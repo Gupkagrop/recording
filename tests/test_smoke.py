@@ -19,6 +19,8 @@ class TestProjectIntegrity(unittest.TestCase):
             "AGENTS.md",
             "GEMINI.md",
             "PROCESSED_VIDEOS.md",
+            "README.md",
+            "LICENSE",
             ".gitignore",
             ".env.example",
             "app_gui.py",

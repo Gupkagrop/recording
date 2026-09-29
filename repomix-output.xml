@@ -44,13 +44,8 @@ docs/
   architecture/
     obsidian_vault.md
     pipeline.md
-scripts/
-  find_refs.py
-  migrate_matan_notes.py
-  verify_links.py
 src/
   extract.py
-  refactor_itis_names.py
 tests/
   test_smoke.py
 .env.example
@@ -59,397 +54,13 @@ tests/
 AGENTS.md
 app_gui.py
 GEMINI.md
+LICENSE
 PROCESSED_VIDEOS.md
+README.md
 </directory_structure>
 
 <files>
 This section contains the contents of the repository's files.
-
-<file path="scripts/find_refs.py">
-import os
-import sys
-import re
-
-sys.stdout.reconfigure(encoding='utf-8')
-
-vault = r"C:\Users\denis\Documents\Obsidian Vault"
-rec = r"C:\Users\denis\Documents\antigravity\recording"
-
-targets = ["Лекция 1", "Практика 1", "Практика 2", "Практика 3 и 4"]
-
-print("=== Vault References ===")
-for root, dirs, files in os.walk(vault):
-    for f in files:
-        if f.endswith('.md') or f.endswith('.canvas'):
-            p = os.path.join(root, f)
-            with open(p, 'r', encoding='utf-8', errors='ignore') as file:
-                content = file.read()
-                for t in targets:
-                    if f"[[{t}]]" in content or f"[[{t}|" in content or f"{t}.md" in content:
-                        rel = os.path.relpath(p, vault)
-                        print(f"{rel} -> {t}")
-
-print("\n=== Recording References ===")
-for root, dirs, files in os.walk(rec):
-    if '.venv' in root or '.git' in root or 'cache' in root:
-        continue
-    for f in files:
-        if f.endswith('.md') or f.endswith('.py'):
-            p = os.path.join(root, f)
-            with open(p, 'r', encoding='utf-8', errors='ignore') as file:
-                content = file.read()
-                for t in targets:
-                    if f"{t}.md" in content or f"[[{t}]]" in content:
-                        rel = os.path.relpath(p, rec)
-                        print(f"{rel} -> {t}")
-</file>
-
-<file path="scripts/migrate_matan_notes.py">
-import os
-import sys
-import json
-import re
-
-sys.stdout.reconfigure(encoding='utf-8')
-
-vault_dir = r"C:\Users\denis\Documents\Obsidian Vault"
-math_dir = os.path.join(vault_dir, "Математика Матанализ")
-terms_dir = os.path.join(math_dir, "Термины")
-canvas_file = os.path.join(math_dir, "Математика.canvas")
-textbook_file = os.path.join(math_dir, "Учебник - Математика.md")
-registry_file = r"C:\Users\denis\Documents\antigravity\recording\PROCESSED_VIDEOS.md"
-
-renames = {
-    "Лекция 1.md": "МатАн - Лекция 1. Элементы теории множеств и числовые последовательности.md",
-    "Практика 1.md": "МатАн - Практика 1. Построение графиков функций.md",
-    "Практика 2.md": "МатАн - Практика 2. Графики функций и множества.md",
-    "Практика 3 и 4.md": "МатАн - Практика 3 и 4. Последовательности и пределы.md"
-}
-
-link_map = {
-    "Лекция 1": "МатАн - Лекция 1. Элементы теории множеств и числовые последовательности",
-    "Практика 1": "МатАн - Практика 1. Построение графиков функций",
-    "Практика 2": "МатАн - Практика 2. Графики функций и множества",
-    "Практика 3 и 4": "МатАн - Практика 3 и 4. Последовательности и пределы"
-}
-
-print("=== Шаг 1: Проверка существования файлов ===")
-for old_name, new_name in renames.items():
-    old_path = os.path.join(math_dir, old_name)
-    new_path = os.path.join(math_dir, new_name)
-    if not os.path.exists(old_path):
-        print(f"ОШИБКА: Исходный файл не найден: {old_path}")
-        sys.exit(1)
-    if os.path.exists(new_path):
-        print(f"ПРЕДУПРЕЖДЕНИЕ: Целевой файл уже существует: {new_path}")
-print("Все 4 исходных файла найдены.")
-
-print("\n=== Шаг 2: Чтение, очистка и переименование заметок ===")
-for old_name, new_name in renames.items():
-    old_path = os.path.join(math_dir, old_name)
-    new_path = os.path.join(math_dir, new_name)
-    
-    with open(old_path, 'r', encoding='utf-8') as f:
-        content = f.read()
-    
-    # Очистка синтаксиса в Лекции 1
-    if old_name == "Лекция 1.md":
-        content = content.replace("-![[Математика Матанализ/Термины/Пустое множество]]]", "- ![[Пустое множество]]")
-        content = content.replace("-![[Математика Матанализ/Термины/Универсальное множество]]]", "- ![[Универсальное множество]]")
-    
-    # Гармонизация заголовка в Практике 2
-    if old_name == "Практика 2.md":
-        content = content.replace("# Практика 2\n", "# Практика 2. Графики функций и множества\n")
-    
-    with open(new_path, 'w', encoding='utf-8') as f:
-        f.write(content)
-    
-    os.remove(old_path)
-    print(f"Переименован: {old_name} -> {new_name}")
-
-print("\n=== Шаг 3: Обновление ссылок в терминах Zettelkasten ===")
-updated_terms_count = 0
-for term_file in sorted(os.listdir(terms_dir)):
-    if not term_file.endswith('.md'):
-        continue
-    term_path = os.path.join(terms_dir, term_file)
-    with open(term_path, 'r', encoding='utf-8') as f:
-        term_content = f.read()
-    
-    original = term_content
-    # Замена ссылок с учетом возможных путей и скобок
-    # 1. Лекция 1
-    term_content = re.sub(
-        r'\[\[(?:Математика Матанализ/)?Лекция 1\]+\]*',
-        f'[[{link_map["Лекция 1"]}]]',
-        term_content
-    )
-    # 2. Практика 1
-    term_content = re.sub(
-        r'\[\[(?:Математика Матанализ/)?Практика 1\]+\]*',
-        f'[[{link_map["Практика 1"]}]]',
-        term_content
-    )
-    # 3. Практика 2
-    term_content = re.sub(
-        r'\[\[(?:Математика Матанализ/)?Практика 2\]+\]*',
-        f'[[{link_map["Практика 2"]}]]',
-        term_content
-    )
-    # 4. Практика 3 и 4
-    term_content = re.sub(
-        r'\[\[(?:Математика Матанализ/)?Практика 3 и 4\]+\]*',
-        f'[[{link_map["Практика 3 и 4"]}]]',
-        term_content
-    )
-    # Форматирование строки Связи
-    term_content = re.sub(r'\*\*Связи:\*\*\s*(\[\[[^\]]+\]\])', r'**Связи:** \1', term_content)
-
-    if term_content != original:
-        with open(term_path, 'w', encoding='utf-8') as f:
-            f.write(term_content)
-        updated_terms_count += 1
-        print(f"Обновлен термин: {term_file}")
-
-print(f"Всего обновлено терминов: {updated_terms_count} из {len(os.listdir(terms_dir))}")
-
-print("\n=== Шаг 4: Обновление генерального учебника ===")
-with open(textbook_file, 'r', encoding='utf-8') as f:
-    tb_content = f.read()
-
-for old_link, new_link in link_map.items():
-    tb_content = tb_content.replace(f"[[{old_link}]]", f"[[{new_link}]]")
-
-with open(textbook_file, 'w', encoding='utf-8') as f:
-    f.write(tb_content)
-print(f"Учебник {os.path.basename(textbook_file)} успешно обновлен.")
-
-print("\n=== Шаг 5: Обновление интерактивного холста Canvas ===")
-with open(canvas_file, 'r', encoding='utf-8') as f:
-    canvas_data = json.load(f)
-
-nodes_updated = 0
-for node in canvas_data.get('nodes', []):
-    if node.get('type') == 'file':
-        f_val = node.get('file', '')
-        for old_name, new_name in renames.items():
-            if f_val.endswith(old_name):
-                node['file'] = f"Математика Матанализ/{new_name}"
-                nodes_updated += 1
-                print(f"Canvas узел обновлен: {old_name} -> {new_name}")
-
-with open(canvas_file, 'w', encoding='utf-8') as f:
-    json.dump(canvas_data, f, ensure_ascii=False, indent=2)
-print(f"Холст Canvas успешно сохранен ({nodes_updated} узлов обновлено).")
-
-print("\n=== Шаг 6: Обновление реестра PROCESSED_VIDEOS.md ===")
-with open(registry_file, 'r', encoding='utf-8') as f:
-    reg_content = f.read()
-
-# Обновление названий заметок
-for old_name, new_name in renames.items():
-    reg_content = reg_content.replace(f"- **Заметка:** {old_name}", f"- **Заметка:** {new_name}")
-
-# Обновление заголовка дисциплины до полного стандарта
-reg_content = reg_content.replace("### Математика\n", "### Математика (Матанализ)\n")
-reg_content = reg_content.replace("| Математика | 4 |", "| Математика (Матанализ) | 4 |")
-
-with open(registry_file, 'w', encoding='utf-8') as f:
-    f.write(reg_content)
-print("Реестр PROCESSED_VIDEOS.md успешно обновлен.")
-
-print("\n=== МИГРАЦИЯ УСПЕШНО ЗАВЕРШЕНА ===")
-</file>
-
-<file path="scripts/verify_links.py">
-import os
-import sys
-import json
-import re
-
-sys.stdout.reconfigure(encoding='utf-8')
-
-vault_dir = r"C:\Users\denis\Documents\Obsidian Vault"
-math_dir = os.path.join(vault_dir, "Математика Матанализ")
-terms_dir = os.path.join(math_dir, "Термины")
-canvas_file = os.path.join(math_dir, "Математика.canvas")
-textbook_file = os.path.join(math_dir, "Учебник - Математика.md")
-registry_file = r"C:\Users\denis\Documents\antigravity\recording\PROCESSED_VIDEOS.md"
-
-errors = []
-
-print("=== 1. Проверка существования файлов заметок ===")
-expected_files = [
-    "МатАн - Лекция 1. Элементы теории множеств и числовые последовательности.md",
-    "МатАн - Практика 1. Построение графиков функций.md",
-    "МатАн - Практика 2. Графики функций и множества.md",
-    "МатАн - Практика 3 и 4. Последовательности и пределы.md",
-    "Учебник - Математика.md",
-    "Математика.canvas"
-]
-for ef in expected_files:
-    p = os.path.join(math_dir, ef)
-    if os.path.exists(p):
-        print(f" [OK] {ef}")
-    else:
-        errors.append(f"Файл не найден: {p}")
-        print(f" [ERR] {ef}")
-
-print("\n=== 2. Проверка связей во всех терминах Zettelkasten ===")
-for tf in sorted(os.listdir(terms_dir)):
-    if not tf.endswith('.md'):
-        continue
-    p = os.path.join(terms_dir, tf)
-    with open(p, 'r', encoding='utf-8') as f:
-        content = f.read()
-    
-    # Ищем блок Связи
-    m = re.search(r'\*\*Связи:\*\*\s*\[\[([^\]]+)\]\]', content)
-    if not m:
-        errors.append(f"В термине {tf} не найден блок **Связи:**")
-        print(f" [ERR] {tf}: нет блока связей")
-    else:
-        target = m.group(1).strip()
-        target_path = os.path.join(math_dir, f"{target}.md")
-        if os.path.exists(target_path):
-            print(f" [OK] {tf} -> [[{target}]]")
-        else:
-            errors.append(f"В термине {tf} битая ссылка: [[{target}]]")
-            print(f" [ERR] {tf} -> битая ссылка [[{target}]]")
-
-print("\n=== 3. Проверка ссылок в Учебник - Математика.md ===")
-with open(textbook_file, 'r', encoding='utf-8') as f:
-    tb_content = f.read()
-
-# Проверяем все [[...]] ссылки в учебнике
-wikilinks = re.findall(r'\[\[([^\]|]+)(?:\|[^\]]+)?\]\]', tb_content)
-for wl in wikilinks:
-    wl_clean = wl.strip()
-    # Проверяем, существует ли заметка в math_dir или в terms_dir
-    p_note = os.path.join(math_dir, f"{wl_clean}.md")
-    p_term = os.path.join(terms_dir, f"{wl_clean}.md")
-    if os.path.exists(p_note) or os.path.exists(p_term):
-        print(f" [OK] Учебник -> [[{wl_clean}]]")
-    else:
-        errors.append(f"В Учебнике битая ссылка: [[{wl_clean}]]")
-        print(f" [ERR] Учебник -> битая ссылка [[{wl_clean}]]")
-
-print("\n=== 4. Проверка узлов холста Canvas ===")
-with open(canvas_file, 'r', encoding='utf-8') as f:
-    cv_data = json.load(f)
-
-for node in cv_data.get('nodes', []):
-    if node.get('type') == 'file':
-        f_rel = node.get('file', '')
-        f_abs = os.path.join(vault_dir, f_rel)
-        if os.path.exists(f_abs):
-            print(f" [OK] Canvas узел: {f_rel}")
-        else:
-            errors.append(f"В Canvas битый узел: {f_rel}")
-            print(f" [ERR] Canvas узел: {f_rel}")
-
-print("\n=== 5. Проверка реестра PROCESSED_VIDEOS.md ===")
-with open(registry_file, 'r', encoding='utf-8') as f:
-    reg_content = f.read()
-
-for ef in expected_files:
-    if ef.startswith("МатАн"):
-        if ef in reg_content:
-            print(f" [OK] PROCESSED_VIDEOS содержит {ef}")
-        else:
-            errors.append(f"PROCESSED_VIDEOS не содержит {ef}")
-            print(f" [ERR] PROCESSED_VIDEOS не содержит {ef}")
-
-# Проверяем отсутствие старых названий в секции Математика
-math_sec_m = re.search(r'### Математика \(Матанализ\)(.*?)(?=\n### |\Z)', reg_content, re.DOTALL)
-if math_sec_m:
-    math_sec = math_sec_m.group(1)
-    for old in ["Практика 1.md", "Практика 2.md", "Лекция 1.md", "Практика 3 и 4.md"]:
-        if f"- **Заметка:** {old}" in math_sec:
-            errors.append(f"В секции Математика осталось старое имя: {old}")
-else:
-    errors.append("Не найдена секция ### Математика (Матанализ) в PROCESSED_VIDEOS.md")
-
-print("\n===============================")
-if errors:
-    print(f"ОБНАРУЖЕНО ОШИБОК: {len(errors)}")
-    for err in errors:
-        print(" -", err)
-    sys.exit(1)
-else:
-    print("ВСЕ ПРОВЕРКИ ПРОЙДЕНЫ УСПЕШНО! НИ ОДНОЙ БИТОЙ ССЫЛКИ!")
-</file>
-
-<file path="src/refactor_itis_names.py">
-import os
-import json
-from pathlib import Path
-
-vault = Path("C:/Users/denis/Documents/Obsidian Vault/Информационные технологии и сервисы")
-
-renames = {}
-for f in vault.iterdir():
-    if f.is_file() and f.suffix == '.md' and not f.name.startswith("Учебник"):
-        if not f.name.startswith("ИТиС - ") and (f.name.startswith("Практика") or f.name.startswith("Лекция")):
-            old_name = f.stem
-            new_name = "ИТиС - " + old_name
-            renames[old_name] = new_name
-
-print(f"Plan to rename: {list(renames.keys())}")
-
-# 1. Update text files (terms, textbook, etc.)
-for root, dirs, files in os.walk(vault):
-    for file in files:
-        if file.endswith('.md'):
-            fpath = Path(root) / file
-            with open(fpath, 'r', encoding='utf-8') as f:
-                content = f.read()
-            
-            changed = False
-            for old, new in renames.items():
-                if f"[[{old}]]" in content:
-                    content = content.replace(f"[[{old}]]", f"[[{new}]]")
-                    changed = True
-                if f"[[{old}|" in content:
-                    content = content.replace(f"[[{old}|", f"[[{new}|")
-                    changed = True
-            
-            if changed:
-                with open(fpath, 'w', encoding='utf-8') as f:
-                    f.write(content)
-                print(f"Updated links in: {fpath.name}")
-
-# 2. Update Canvas
-canvas_file = vault / "Информационные технологии и сервисы.canvas"
-if canvas_file.exists():
-    with open(canvas_file, 'r', encoding='utf-8') as f:
-        canvas_data = json.load(f)
-    
-    changed = False
-    for node in canvas_data.get('nodes', []):
-        if node.get('type') == 'file':
-            file_val = node.get('file', '')
-            for old, new in renames.items():
-                if file_val == f"{old}.md":
-                    node['file'] = f"{new}.md"
-                    changed = True
-                elif file_val == f"Информационные технологии и сервисы/{old}.md":
-                    node['file'] = f"Информационные технологии и сервисы/{new}.md"
-                    changed = True
-                    
-    if changed:
-        with open(canvas_file, 'w', encoding='utf-8') as f:
-            json.dump(canvas_data, f, ensure_ascii=False, indent=2)
-        print(f"Updated Canvas links")
-
-# 3. Rename files
-for old, new in renames.items():
-    old_path = vault / f"{old}.md"
-    new_path = vault / f"{new}.md"
-    if old_path.exists():
-        old_path.rename(new_path)
-        print(f"Renamed file: {old_path.name} -> {new_path.name}")
-</file>
 
 <file path="Запустить_Транскрибатор.bat">
 @echo off
@@ -457,253 +68,174 @@ title Умная Транскрибация Видео
 uv run python app_gui.py
 </file>
 
-<file path="src/extract.py">
-"""Модуль извлечения аудиодорожки, транскрибации речи и нарезки опорных слайдов из видеофайлов."""
+<file path="LICENSE">
+MIT License
 
-import os
-import shutil
-import site
-import sys
-import time
-from pathlib import Path
-from typing import List
+Copyright (c) 2026 Denis Lopukhov (Gupkagrop)
 
-# Добавление путей к бинарным библиотекам NVIDIA CUDA в Windows PATH
-venv_site = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    ".venv",
-    "Lib",
-    "site-packages",
-)
-for lib in ["cublas", "cudnn", "cuda_nvrtc"]:
-    p = os.path.join(venv_site, "nvidia", lib, "bin")
-    if os.path.exists(p):
-        os.environ["PATH"] = p + os.pathsep + os.environ["PATH"]
-        try:
-            os.add_dll_directory(p)
-        except Exception:
-            pass
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-import ffmpeg
-from faster_whisper import WhisperModel
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
-
-def extract_audio(video_path: str, temp_audio_path: str) -> None:
-    """Извлечение 16-битной PCM аудиодорожки с частотой 16 кГц через ffmpeg."""
-    if os.path.exists(temp_audio_path):
-        return
-
-    print("Извлечение аудиодорожки...")
-    try:
-        (
-            ffmpeg.input(video_path)
-            .output(temp_audio_path, acodec="pcm_s16le", ac=1, ar="16k")
-            .overwrite_output()
-            .run(quiet=True)
-        )
-    except ffmpeg.Error as error:
-        err_msg = error.stderr.decode() if error.stderr else str(error)
-        print(f"Ошибка ffmpeg (аудио): {err_msg}")
-        sys.exit(1)
-
-
-def transcribe_audio(audio_path: str, transcript_file_path: str) -> None:
-    """Транскрибация аудио через модель faster-whisper с сохранением временных меток."""
-    if os.path.exists(transcript_file_path):
-        return
-
-    print("Транскрибация аудио (faster-whisper GPU CUDA)...")
-    try:
-        model = WhisperModel("small", device="cuda", compute_type="float16")
-    except RuntimeError:
-        print("CUDA недоступна. Выполняется переключение на CPU (int8)...")
-        model = WhisperModel("small", device="cpu", compute_type="int8")
-
-    segments, _ = model.transcribe(
-        audio_path,
-        beam_size=5,
-        vad_filter=True,
-        vad_parameters=dict(min_silence_duration_ms=500),
-    )
-
-    with open(transcript_file_path, "w", encoding="utf-8") as file:
-        for segment in segments:
-            start_min = int(segment.start // 60)
-            start_sec = int(segment.start % 60)
-            file.write(f"[{start_min:02d}:{start_sec:02d}] {segment.text}\n")
-
-
-def extract_frames(video_path: str, frames_directory: str, video_basename: str) -> None:
-    """Извлечение ключевых слайдов на основе умной детекции смены сцен (Scene Change Detection)."""
-    if len(os.listdir(frames_directory)) > 0:
-        return
-
-    print("Извлечение ключевых слайдов лекции (умная детекция смены сцен)...")
-    try:
-        # Умный фильтр: смена слайда (scene > 0.05) не чаще 1 раза в 5 сек,
-        # либо гарантированный снимок каждые 120 секунд при статичном экране.
-        select_expr = "isnan(prev_selected_t)+gte(t-prev_selected_t,5)*(gt(scene,0.05)+gte(t-prev_selected_t,120))"
-        (
-            ffmpeg.input(video_path)
-            .filter("select", select_expr)
-            .output(
-                os.path.join(frames_directory, f"{video_basename}-frame-%04d.jpg"),
-                vsync="vfr",
-                qscale=2,
-            )
-            .overwrite_output()
-            .run(quiet=True)
-        )
-    except ffmpeg.Error as error:
-        err_msg = error.stderr.decode() if error.stderr else str(error)
-        print(f"Предупреждение ffmpeg (scene detection): {err_msg}. Переход на резервный режим...")
-        try:
-            (
-                ffmpeg.input(video_path)
-                .filter("fps", fps=1 / 60)
-                .output(os.path.join(frames_directory, f"{video_basename}-frame-%04d.jpg"))
-                .overwrite_output()
-                .run(quiet=True)
-            )
-        except ffmpeg.Error as fallback_err:
-            fallback_msg = fallback_err.stderr.decode() if fallback_err.stderr else str(fallback_err)
-            print(f"Критическая ошибка ffmpeg (кадры): {fallback_msg}")
-            sys.exit(1)
-
-
-def extract_content(video_path: str) -> None:
-    """Координатор сквозного процесса подготовки данных из видеозаписи."""
-    if not os.path.exists(video_path):
-        print(f"Ошибка: Видеофайл не найден: {video_path}")
-        sys.exit(1)
-
-    video_basename = os.path.splitext(os.path.basename(video_path))[0]
-    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    cache_dir = os.path.join(project_root, "cache", video_basename)
-
-    os.makedirs(cache_dir, exist_ok=True)
-    temp_audio = os.path.join(cache_dir, "audio.wav")
-    transcript_file = os.path.join(cache_dir, "transcript.txt")
-    frames_dir = os.path.join(cache_dir, "frames")
-    os.makedirs(frames_dir, exist_ok=True)
-
-    # 1. Извлечение аудио
-    extract_audio(video_path, temp_audio)
-
-    # 2. Распознавание речи
-    transcribe_audio(temp_audio, transcript_file)
-
-    # 3. Нарезка ключевых слайдов
-    extract_frames(video_path, frames_dir, video_basename)
-
-    print(f"\nГотово! Результаты сохранены в:\n{cache_dir}")
-
-
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Использование: uv run python src/extract.py <путь_к_видео>")
-        sys.exit(1)
-    extract_content(sys.argv[1])
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 </file>
 
-<file path="tests/test_smoke.py">
-"""Модуль базовых дымовых тестов (smoke tests) для верификации целостности репозитория."""
+<file path="README.md">
+# 🎓 Obsidian Lecture Transcriber & Knowledge Base Automator
 
-import importlib.util
-import os
-import unittest
-from pathlib import Path
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![CUDA 12](https://img.shields.io/badge/CUDA-12.x-green.svg)](https://developer.nvidia.com/cuda-toolkit)
+[![faster-whisper](https://img.shields.io/badge/faster--whisper-CTranslate2-orange.svg)](https://github.com/SYSTRAN/faster-whisper)
+[![Obsidian](https://img.shields.io/badge/Obsidian-Knowledge_Base-purple.svg)](https://obsidian.md/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+Автономный программный комплекс для **100% локальной (офлайн) транскрибации видеозаписей лекций и практик** с аппаратным ускорением на GPU (NVIDIA CUDA 12, cuDNN 9) и интеллектуальной интеграцией базы знаний в **Obsidian Vault**.
 
-class TestProjectIntegrity(unittest.TestCase):
-    """Набор тестов для проверки структуры проекта и валидности модулей."""
+---
 
-    def setUp(self) -> None:
-        """Инициализация путей к ключевым артефактам проекта."""
-        self.root_dir = Path(__file__).resolve().parent.parent
+## 🌟 Ключевые возможности
 
-    def test_required_files_exist(self) -> None:
-        """Проверка наличия всех обязательных файлов стандарта 2026 года."""
-        required_files = [
-            "AGENTS.md",
-            "GEMINI.md",
-            "PROCESSED_VIDEOS.md",
-            ".gitignore",
-            ".env.example",
-            "app_gui.py",
-            "src/extract.py",
-            "docs/architecture/pipeline.md",
-            "docs/architecture/obsidian_vault.md",
-        ]
-        for rel_path in required_files:
-            file_path = self.root_dir / rel_path
-            self.assertTrue(
-                file_path.exists(),
-                f"Обязательный файл {rel_path} отсутствует в репозитории.",
-            )
+- 🖥️ **Современный GUI (CustomTkinter):** удобное графическое приложение с поддержкой тёмной темы, выбором моделей Whisper (`tiny`, `base`, `small`, `medium`, `large-v3`), переключением GPU (CUDA float16) / CPU (int8) и прогресс-баром.
+- ⚡ **Аппаратное ускорение транскрибации:** движок `faster-whisper` на базе CTranslate2 обеспечивает расшифровку аудио в 4–8 раз быстрее реального времени на видеокартах NVIDIA GeForce RTX.
+- 👁️ **Умная детекция слайдов (Scene Change Detection):** адаптивная нарезка ключевых кадров видеоряда через фильтры `ffmpeg` — извлекаются только реальные смены слайдов презентации (в среднем 15–25 кадров на пару вместо сотен дублей).
+- 🧠 **Сквозная интеграция с Obsidian Vault:**
+  - **Zettelkasten-понятия:** автоматическое пополнение атомарных определений в папке `Термины/`.
+  - **Академический KaTeX LaTeX:** формулы, выкладки и теоремы форматируются в чистый LaTeX (`$$...$$`).
+  - **Генеральные учебники:** консолидация материала в единый `Учебник - <Дисциплина>.md` с логической структурой по главам.
+  - **Интерактивные холсты (`.canvas`):** построение и автоматическое обновление графов знаний (синие узлы лекций, зелёные узлы понятий в групповых фреймах).
+  - **Трекер дедлайнов и ДЗ:** фиксация контрольных точек и домашних заданий в централизованном файле `Дедлайны и ДЗ.md`.
+  - **Active Recall:** блок вопросов для экзамена и самопроверки с ответами под спойлерами в конце каждой лекции.
+- 🏷️ **Стандарт аббревиатур дисциплин:** единая номенклатура файлов (`АДиИИ`, `АГиТДУ`, `ДМ`, `ИнЯз`, `ИТиС`, `МатАн`, `ОПД`, `ОРГ`, `ПФК`, `ПРОГ`) с защитой от битых ссылок (Zero Broken Links Protocol).
 
-    def test_agents_contract_structure(self) -> None:
-        """Проверка структуры и ключевых разделов файла AGENTS.md."""
-        agents_file = self.root_dir / "AGENTS.md"
-        content = agents_file.read_text(encoding="utf-8")
+---
 
-        expected_sections = [
-            "Tech Stack",
-            "Commands",
-            "Code Standards",
-            "Architecture & Pipeline Rules",
-            "Prohibited Patterns",
-        ]
-        for section in expected_sections:
-            self.assertIn(
-                section,
-                content,
-                f"Раздел '{section}' отсутствует в файле AGENTS.md.",
-            )
+## 🏗️ Архитектура конвейера (Pipeline)
 
-    def test_key_invariants_present(self) -> None:
-        """Проверка ключевых инвариантов конвейера в AGENTS.md."""
-        agents_file = self.root_dir / "AGENTS.md"
-        content = agents_file.read_text(encoding="utf-8")
+```mermaid
+flowchart TD
+    Video["Видеозапись лекции (.mp4)"] --> Extract["src/extract.py (ffmpeg: PCM WAV + Scene Detection)"]
+    Extract --> Whisper["faster-whisper (CUDA 12, float16)"]
+    Whisper --> Transcript["cache/<video>/transcript.txt"]
+    Transcript --> Agent["ИИ-архитектор (Анализ текста + слайдов)"]
+    Agent --> Zettel["Zettelkasten: Термины/ (Атомарные карточки)"]
+    Agent --> Lecture["Лекционная заметка (LaTeX + Callouts + Dataview Frontmatter)"]
+    Agent --> Textbook["Общий учебник по дисциплине"]
+    Agent --> Canvas["Интерактивный граф знаний (.canvas)"]
+    Agent --> Deadlines["Централизованный трекер 'Дедлайны и ДЗ.md'"]
+    Agent --> Cleanup["Очистка кэша & фиксация в PROCESSED_VIDEOS.md"]
+```
 
-        expected_invariants = [
-            "Мультимодальный анализ слайдов",
-            "Аббревиатуры дисциплин",
-            "Синхронная миграция без потери связей",
-            "Active Recall",
-            "Дедлайны и ДЗ",
-            "Self-Linting",
-            "scratch",
-        ]
-        for inv in expected_invariants:
-            self.assertIn(
-                inv,
-                content,
-                f"Ключевой инвариант '{inv}' отсутствует в AGENTS.md.",
-            )
+---
 
-    def test_root_directory_cleanliness(self) -> None:
-        """Проверка отсутствия посторонних скриптов в корневой директории."""
-        allowed_root_py = {"app_gui.py"}
-        root_py_files = {
-            f.name for f in self.root_dir.glob("*.py") if f.is_file()
-        }
-        unexpected_files = root_py_files - allowed_root_py
-        self.assertEqual(
-            unexpected_files,
-            set(),
-            f"Обнаружены посторонние скрипты в корне проекта: {unexpected_files}. Используйте папку scratch/.",
-        )
+## 📁 Структура проекта
 
-    def test_extract_module_syntax(self) -> None:
-        """Проверка корректности синтаксиса и структуры модуля extract.py."""
-        extract_path = self.root_dir / "src" / "extract.py"
-        spec = importlib.util.spec_from_file_location("extract", extract_path)
-        self.assertIsNotNone(spec, "Не удалось создать спецификацию для модуля extract.py")
+```text
+├── src/
+│   └── extract.py                  # Основной движок извлечения аудио, транскрибации и нарезки кадров
+├── docs/
+│   └── architecture/
+│       ├── pipeline.md             # Спецификация конвейера автономной обработки
+│       └── obsidian_vault.md       # Спецификация структуры базы Obsidian Vault
+├── tests/
+│   └── test_smoke.py               # Комплексный сьют дымовых тестов (верификация целостности)
+├── app_gui.py                      # Десктопный GUI на CustomTkinter
+├── Запустить_Транскрибатор.bat      # Быстрый запуск GUI для Windows в один клик
+├── AGENTS.md                       # Мастер-контракт разработки и регламент ИИ-агентов (стандарт 2026)
+├── GEMINI.md                       # Обратная совместимость и навигация по правилам
+├── PROCESSED_VIDEOS.md             # Реестр обработанных видео и статистика по предметам
+├── repomix-output.xml              # AST-карта репозитория для мгновенного контекста агентов
+├── .env.example                    # Пример конфигурации путей и параметров модели
+└── .gitignore                      # Исключения кэшей, медиафайлов и виртуального окружения
+```
 
+---
 
-if __name__ == "__main__":
-    unittest.main()
+## 🚀 Быстрый старт
+
+### Системные требования
+- **ОС:** Windows 10/11 (64-bit)
+- **Python:** 3.12 или выше
+- **Пакетный менеджер:** [uv](https://github.com/astral-sh/uv) (рекомендуется)
+- **FFmpeg:** системный бинарник `ffmpeg` в системном `PATH`
+- **GPU (опционально, для ускорения):** видеокарта NVIDIA с поддержкой CUDA 12 и cuDNN 9
+
+### 1. Клонирование репозитория
+```bash
+git clone https://github.com/Gupkagrop/obsidian-lecture-transcriber.git
+cd obsidian-lecture-transcriber
+```
+
+### 2. Установка зависимостей через `uv`
+```powershell
+uv venv
+uv pip install -r requirements.txt
+# или установка ключевых пакетов:
+uv pip install faster-whisper ffmpeg-python customtkinter pillow
+```
+
+### 3. Настройка переменных окружения
+Скопируйте пример конфигурации и укажите путь к вашему хранилищу Obsidian:
+```powershell
+copy .env.example .env
+```
+
+---
+
+## 💻 Использование
+
+### Вариант А: Графический интерфейс (GUI)
+Просто запустите батник двойным кликом:
+```powershell
+.\Запустить_Транскрибатор.bat
+```
+Или через терминал:
+```powershell
+uv run python app_gui.py
+```
+1. Выберите видеофайл (`.mp4`, `.mkv`, `.avi`, `.mov`).
+2. Выберите модель Whisper (`small` оптимальна по соотношению скорости и качества).
+3. Нажмите **«Начать транскрибацию»**.
+
+### Вариант Б: Консольный запуск (CLI)
+```powershell
+uv run python src/extract.py "C:\Users\...\Videos\Математика. Лекция 1.mp4"
+```
+Результаты (аудиодорожка `audio.wav`, полный транскрипт с таймкодами `transcript.txt` и опорные кадры слайдов в `frames/`) будут сохранены в папку `cache/<video_basename>/`.
+
+---
+
+## 🧪 Тестирование и верификация
+
+Запуск полного сьюта автоматических проверок целостности:
+```powershell
+uv run python -m unittest tests/test_smoke.py
+```
+Синтаксическая компиляция:
+```powershell
+uv run python -m py_compile src/extract.py app_gui.py tests/test_smoke.py
+```
+Сборка AST-карты кодовой базы:
+```powershell
+npx repomix --style xml
+```
+
+---
+
+## 📄 Лицензия
+
+Проект распространяется под свободной лицензией **MIT**. Подробности в файле [LICENSE](LICENSE).
 </file>
 
 <file path=".env.example">
@@ -721,61 +253,6 @@ WHISPER_DEVICE=cuda
 
 # Тип вычислений для CUDA (float16, int8_float16, float32)
 WHISPER_COMPUTE_TYPE=float16
-</file>
-
-<file path=".gitignore">
-# Python & Virtual Environments
-.venv/
-venv/
-ENV/
-env/
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Secrets & Environment Variables
-.env
-.env.*
-!.env.example
-
-# Temporary Video & Audio Caches
-cache/
-*.wav
-*.mp3
-temp_audio*
-
-# Agent Artifacts & Ephemeral State
-.gemini/
-brain/
-scratch/
-*.temp.py
-temp_*.py
-
-# IDE & OS Files
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
-Thumbs.db
-Desktop.ini
-.DS_Store
 </file>
 
 <file path="app_gui.py">
@@ -1012,6 +489,312 @@ if __name__ == "__main__":
 - **Конвейер обработки лекций:** [docs/architecture/pipeline.md](file:///C:/Users/denis/Documents/antigravity/recording/docs/architecture/pipeline.md)
 - **Архитектура Obsidian Vault:** [docs/architecture/obsidian_vault.md](file:///C:/Users/denis/Documents/antigravity/recording/docs/architecture/obsidian_vault.md)
 - **Реестр обработанных видео:** [PROCESSED_VIDEOS.md](file:///C:/Users/denis/Documents/antigravity/recording/PROCESSED_VIDEOS.md)
+</file>
+
+<file path="src/extract.py">
+"""Модуль извлечения аудиодорожки, транскрибации речи и нарезки опорных слайдов из видеофайлов."""
+
+import os
+import shutil
+import site
+import sys
+import time
+from pathlib import Path
+from typing import List
+
+# Добавление путей к бинарным библиотекам NVIDIA CUDA в Windows PATH
+venv_site = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    ".venv",
+    "Lib",
+    "site-packages",
+)
+for lib in ["cublas", "cudnn", "cuda_nvrtc"]:
+    p = os.path.join(venv_site, "nvidia", lib, "bin")
+    if os.path.exists(p):
+        os.environ["PATH"] = p + os.pathsep + os.environ["PATH"]
+        try:
+            os.add_dll_directory(p)
+        except Exception:
+            pass
+
+import ffmpeg
+from faster_whisper import WhisperModel
+
+
+def extract_audio(video_path: str, temp_audio_path: str) -> None:
+    """Извлечение 16-битной PCM аудиодорожки с частотой 16 кГц через ffmpeg."""
+    if os.path.exists(temp_audio_path):
+        return
+
+    print("Извлечение аудиодорожки...")
+    try:
+        (
+            ffmpeg.input(video_path)
+            .output(temp_audio_path, acodec="pcm_s16le", ac=1, ar="16k")
+            .overwrite_output()
+            .run(quiet=True)
+        )
+    except ffmpeg.Error as error:
+        err_msg = error.stderr.decode() if error.stderr else str(error)
+        print(f"Ошибка ffmpeg (аудио): {err_msg}")
+        sys.exit(1)
+
+
+def transcribe_audio(audio_path: str, transcript_file_path: str) -> None:
+    """Транскрибация аудио через модель faster-whisper с сохранением временных меток."""
+    if os.path.exists(transcript_file_path):
+        return
+
+    print("Транскрибация аудио (faster-whisper GPU CUDA)...")
+    try:
+        model = WhisperModel("small", device="cuda", compute_type="float16")
+    except RuntimeError:
+        print("CUDA недоступна. Выполняется переключение на CPU (int8)...")
+        model = WhisperModel("small", device="cpu", compute_type="int8")
+
+    segments, _ = model.transcribe(
+        audio_path,
+        beam_size=5,
+        vad_filter=True,
+        vad_parameters=dict(min_silence_duration_ms=500),
+    )
+
+    with open(transcript_file_path, "w", encoding="utf-8") as file:
+        for segment in segments:
+            start_min = int(segment.start // 60)
+            start_sec = int(segment.start % 60)
+            file.write(f"[{start_min:02d}:{start_sec:02d}] {segment.text}\n")
+
+
+def extract_frames(video_path: str, frames_directory: str, video_basename: str) -> None:
+    """Извлечение ключевых слайдов на основе умной детекции смены сцен (Scene Change Detection)."""
+    if len(os.listdir(frames_directory)) > 0:
+        return
+
+    print("Извлечение ключевых слайдов лекции (умная детекция смены сцен)...")
+    try:
+        # Умный фильтр: смена слайда (scene > 0.05) не чаще 1 раза в 5 сек,
+        # либо гарантированный снимок каждые 120 секунд при статичном экране.
+        select_expr = "isnan(prev_selected_t)+gte(t-prev_selected_t,5)*(gt(scene,0.05)+gte(t-prev_selected_t,120))"
+        (
+            ffmpeg.input(video_path)
+            .filter("select", select_expr)
+            .output(
+                os.path.join(frames_directory, f"{video_basename}-frame-%04d.jpg"),
+                vsync="vfr",
+                qscale=2,
+            )
+            .overwrite_output()
+            .run(quiet=True)
+        )
+    except ffmpeg.Error as error:
+        err_msg = error.stderr.decode() if error.stderr else str(error)
+        print(f"Предупреждение ffmpeg (scene detection): {err_msg}. Переход на резервный режим...")
+        try:
+            (
+                ffmpeg.input(video_path)
+                .filter("fps", fps=1 / 60)
+                .output(os.path.join(frames_directory, f"{video_basename}-frame-%04d.jpg"))
+                .overwrite_output()
+                .run(quiet=True)
+            )
+        except ffmpeg.Error as fallback_err:
+            fallback_msg = fallback_err.stderr.decode() if fallback_err.stderr else str(fallback_err)
+            print(f"Критическая ошибка ffmpeg (кадры): {fallback_msg}")
+            sys.exit(1)
+
+
+def extract_content(video_path: str) -> None:
+    """Координатор сквозного процесса подготовки данных из видеозаписи."""
+    if not os.path.exists(video_path):
+        print(f"Ошибка: Видеофайл не найден: {video_path}")
+        sys.exit(1)
+
+    video_basename = os.path.splitext(os.path.basename(video_path))[0]
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    cache_dir = os.path.join(project_root, "cache", video_basename)
+
+    os.makedirs(cache_dir, exist_ok=True)
+    temp_audio = os.path.join(cache_dir, "audio.wav")
+    transcript_file = os.path.join(cache_dir, "transcript.txt")
+    frames_dir = os.path.join(cache_dir, "frames")
+    os.makedirs(frames_dir, exist_ok=True)
+
+    # 1. Извлечение аудио
+    extract_audio(video_path, temp_audio)
+
+    # 2. Распознавание речи
+    transcribe_audio(temp_audio, transcript_file)
+
+    # 3. Нарезка ключевых слайдов
+    extract_frames(video_path, frames_dir, video_basename)
+
+    print(f"\nГотово! Результаты сохранены в:\n{cache_dir}")
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("Использование: uv run python src/extract.py <путь_к_видео>")
+        sys.exit(1)
+    extract_content(sys.argv[1])
+</file>
+
+<file path="tests/test_smoke.py">
+"""Модуль базовых дымовых тестов (smoke tests) для верификации целостности репозитория."""
+
+import importlib.util
+import os
+import unittest
+from pathlib import Path
+
+
+class TestProjectIntegrity(unittest.TestCase):
+    """Набор тестов для проверки структуры проекта и валидности модулей."""
+
+    def setUp(self) -> None:
+        """Инициализация путей к ключевым артефактам проекта."""
+        self.root_dir = Path(__file__).resolve().parent.parent
+
+    def test_required_files_exist(self) -> None:
+        """Проверка наличия всех обязательных файлов стандарта 2026 года."""
+        required_files = [
+            "AGENTS.md",
+            "GEMINI.md",
+            "PROCESSED_VIDEOS.md",
+            "README.md",
+            "LICENSE",
+            ".gitignore",
+            ".env.example",
+            "app_gui.py",
+            "src/extract.py",
+            "docs/architecture/pipeline.md",
+            "docs/architecture/obsidian_vault.md",
+        ]
+        for rel_path in required_files:
+            file_path = self.root_dir / rel_path
+            self.assertTrue(
+                file_path.exists(),
+                f"Обязательный файл {rel_path} отсутствует в репозитории.",
+            )
+
+    def test_agents_contract_structure(self) -> None:
+        """Проверка структуры и ключевых разделов файла AGENTS.md."""
+        agents_file = self.root_dir / "AGENTS.md"
+        content = agents_file.read_text(encoding="utf-8")
+
+        expected_sections = [
+            "Tech Stack",
+            "Commands",
+            "Code Standards",
+            "Architecture & Pipeline Rules",
+            "Prohibited Patterns",
+        ]
+        for section in expected_sections:
+            self.assertIn(
+                section,
+                content,
+                f"Раздел '{section}' отсутствует в файле AGENTS.md.",
+            )
+
+    def test_key_invariants_present(self) -> None:
+        """Проверка ключевых инвариантов конвейера в AGENTS.md."""
+        agents_file = self.root_dir / "AGENTS.md"
+        content = agents_file.read_text(encoding="utf-8")
+
+        expected_invariants = [
+            "Мультимодальный анализ слайдов",
+            "Аббревиатуры дисциплин",
+            "Синхронная миграция без потери связей",
+            "Active Recall",
+            "Дедлайны и ДЗ",
+            "Self-Linting",
+            "scratch",
+        ]
+        for inv in expected_invariants:
+            self.assertIn(
+                inv,
+                content,
+                f"Ключевой инвариант '{inv}' отсутствует в AGENTS.md.",
+            )
+
+    def test_root_directory_cleanliness(self) -> None:
+        """Проверка отсутствия посторонних скриптов в корневой директории."""
+        allowed_root_py = {"app_gui.py"}
+        root_py_files = {
+            f.name for f in self.root_dir.glob("*.py") if f.is_file()
+        }
+        unexpected_files = root_py_files - allowed_root_py
+        self.assertEqual(
+            unexpected_files,
+            set(),
+            f"Обнаружены посторонние скрипты в корне проекта: {unexpected_files}. Используйте папку scratch/.",
+        )
+
+    def test_extract_module_syntax(self) -> None:
+        """Проверка корректности синтаксиса и структуры модуля extract.py."""
+        extract_path = self.root_dir / "src" / "extract.py"
+        spec = importlib.util.spec_from_file_location("extract", extract_path)
+        self.assertIsNotNone(spec, "Не удалось создать спецификацию для модуля extract.py")
+
+
+if __name__ == "__main__":
+    unittest.main()
+</file>
+
+<file path=".gitignore">
+# Python & Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Secrets & Environment Variables
+.env
+.env.*
+!.env.example
+
+# Temporary Video & Audio Caches
+cache/
+*.wav
+*.mp3
+temp_audio*
+
+# Agent Artifacts & Ephemeral State
+.gemini/
+brain/
+scratch/
+*.temp.py
+temp_*.py
+
+# IDE & OS Files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+Thumbs.db
+Desktop.ini
+.DS_Store
 </file>
 
 <file path="docs/architecture/obsidian_vault.md">
