@@ -38,6 +38,8 @@ temp_audio*
 .gemini/
 brain/
 scratch/
+repomix-output.*
+
 *.temp.py
 temp_*.py
 

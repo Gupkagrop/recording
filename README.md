@@ -78,8 +78,8 @@ flowchart TD
 
 ### 1. Клонирование репозитория
 ```bash
-git clone https://github.com/Gupkagrop/obsidian-lecture-transcriber.git
-cd obsidian-lecture-transcriber
+git clone https://github.com/Gupkagrop/recording.git
+cd recording
 ```
 
 ### 2. Установка зависимостей через `uv`
