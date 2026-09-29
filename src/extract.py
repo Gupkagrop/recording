@@ -74,22 +74,41 @@ def transcribe_audio(audio_path: str, transcript_file_path: str) -> None:
 
 
 def extract_frames(video_path: str, frames_directory: str, video_basename: str) -> None:
-    """Извлечение опорных видеокадров (1 кадр в минуту) через ffmpeg."""
+    """Извлечение ключевых слайдов на основе умной детекции смены сцен (Scene Change Detection)."""
     if len(os.listdir(frames_directory)) > 0:
         return
 
-    print("Извлечение опорных кадров лекции...")
+    print("Извлечение ключевых слайдов лекции (умная детекция смены сцен)...")
     try:
+        # Умный фильтр: смена слайда (scene > 0.05) не чаще 1 раза в 5 сек,
+        # либо гарантированный снимок каждые 120 секунд при статичном экране.
+        select_expr = "isnan(prev_selected_t)+gte(t-prev_selected_t,5)*(gt(scene,0.05)+gte(t-prev_selected_t,120))"
         (
             ffmpeg.input(video_path)
-            .filter("fps", fps=1 / 60)
-            .output(os.path.join(frames_directory, f"{video_basename}-frame-%04d.jpg"))
+            .filter("select", select_expr)
+            .output(
+                os.path.join(frames_directory, f"{video_basename}-frame-%04d.jpg"),
+                vsync="vfr",
+                qscale=2,
+            )
+            .overwrite_output()
             .run(quiet=True)
         )
     except ffmpeg.Error as error:
         err_msg = error.stderr.decode() if error.stderr else str(error)
-        print(f"Ошибка ffmpeg (кадры): {err_msg}")
-        sys.exit(1)
+        print(f"Предупреждение ffmpeg (scene detection): {err_msg}. Переход на резервный режим...")
+        try:
+            (
+                ffmpeg.input(video_path)
+                .filter("fps", fps=1 / 60)
+                .output(os.path.join(frames_directory, f"{video_basename}-frame-%04d.jpg"))
+                .overwrite_output()
+                .run(quiet=True)
+            )
+        except ffmpeg.Error as fallback_err:
+            fallback_msg = fallback_err.stderr.decode() if fallback_err.stderr else str(fallback_err)
+            print(f"Критическая ошибка ffmpeg (кадры): {fallback_msg}")
+            sys.exit(1)
 
 
 def extract_content(video_path: str) -> None:

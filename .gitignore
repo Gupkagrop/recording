@@ -38,6 +38,8 @@ temp_audio*
 .gemini/
 brain/
 scratch/
+*.temp.py
+temp_*.py
 
 # IDE & OS Files
 .idea/
